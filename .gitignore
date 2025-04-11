@@ -1,0 +1,77 @@
+# --- Node (React / Vite) ---
+node_modules/
+dist/
+build/
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+*.log
+
+# Vite specific
+.vite/
+.cache/
+*.tsbuildinfo
+
+# --- Python (FastAPI) ---
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+*.log
+
+# Ignore video files
+*.mp4
+*.MP4
+
+# Ignore Excel macro spreadsheets (if not needed)
+*.xlsm
+
+# Ignore .vs folder (Visual Studio IDE cache)
+.vs/
+
+
+# FastAPI + Uvicorn
+*.db
+instance/
+.env
+*.env
+*.sqlite3
+
+# Pip / Poetry / Pipenv
+pip-log.txt
+pip-delete-this-directory.txt
+poetry.lock
+Pipfile.lock
+.poetry/
+
+# VS Code
+.vscode/
+
+# Mac / Linux / Windows
+.DS_Store
+Thumbs.db
+
+# Pytest
+.pytest_cache/
+
+# Mypy / coverage / testing
+.mypy_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Virtual Envs
+venv/
+env/
+.venv/
+env1/
+
+# Docker
+*.pid
+docker-compose.override.yml
