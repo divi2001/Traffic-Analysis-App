@@ -6,7 +6,6 @@ import toast from "react-hot-toast";
 import api from "../api";
 import { useNavigate, useParams, Link } from "react-router-dom";
 
-
 interface FormData {
   jobNumber: string;
   latitude: string;
@@ -14,6 +13,7 @@ interface FormData {
   additionalNotes: string;
   surveyHours: string;
   videoFiles: File[];
+  surveyTypes: string[];
 }
 
 interface JobDetails {
@@ -24,6 +24,7 @@ interface JobDetails {
   longitude: string;
   additional_notes: string;
   survey_hours: string;
+  survey_types: string[];
   videos: { id: number; filename: string }[];
   status: string;
   created_at: string;
@@ -39,11 +40,12 @@ const CreateEditJob = () => {
   
   const [formData, setFormData] = useState<FormData>({
     jobNumber: '',
-    latitude: '33.749',  // Default to Atlanta's latitude
-    longitude: '-84.388', // Default to Atlanta's longitude
+    latitude: '33.749',
+    longitude: '-84.388',
     additionalNotes: '',
     surveyHours: '',
-    videoFiles: []
+    videoFiles: [],
+    surveyTypes: []
   });
 
   const [mapCenter, setMapCenter] = useState({
@@ -59,15 +61,12 @@ const CreateEditJob = () => {
     height: '100%'
   };
 
-  // Fetch job details if jobId is provided
   useEffect(() => {
     if (jobId) {
-      // Check if we're in view mode (for job details)
       if (window.location.pathname.includes('view-job')) {
         setIsViewMode(true);
       }
       
-      // Fetch job details
       const fetchJobDetails = async () => {
         setLoading(true);
         try {
@@ -75,17 +74,16 @@ const CreateEditJob = () => {
           const job = response.data;
           setJobDetails(job);
           
-          // Update form data with job details
           setFormData({
             jobNumber: job.job_number || job.name || '',
             latitude: job.latitude || '33.749',
             longitude: job.longitude || '-84.388',
             additionalNotes: job.additional_notes || '',
             surveyHours: job.survey_hours || '',
-            videoFiles: []
+            videoFiles: [],
+            surveyTypes: job.survey_types || []
           });
           
-          // Update map center
           if (job.latitude && job.longitude) {
             const lat = parseFloat(job.latitude);
             const lng = parseFloat(job.longitude);
@@ -107,7 +105,7 @@ const CreateEditJob = () => {
   }, [jobId]);
 
   const handleInputChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (isViewMode) return; // Prevent changes in view mode
+    if (isViewMode) return;
     
     const { name, value } = e.target;
     setFormData(prevState => ({
@@ -125,8 +123,28 @@ const CreateEditJob = () => {
     }
   };
 
+  const handleSurveyTypeChange = (e: ChangeEvent<HTMLInputElement>) => {
+    if (isViewMode) return;
+    
+    const { value, checked } = e.target;
+    
+    setFormData(prevState => {
+      if (checked) {
+        return {
+          ...prevState,
+          surveyTypes: [...prevState.surveyTypes, value]
+        };
+      } else {
+        return {
+          ...prevState,
+          surveyTypes: prevState.surveyTypes.filter(type => type !== value)
+        };
+      }
+    });
+  };
+
   const handleMapClick = (e: google.maps.MapMouseEvent) => {
-    if (isViewMode) return; // Prevent changes in view mode
+    if (isViewMode) return;
     
     if (e.latLng && isEditingLocation) {
       const newLat = e.latLng.lat();
@@ -142,7 +160,7 @@ const CreateEditJob = () => {
   };
 
   const handleFileUpload = (e: ChangeEvent<HTMLInputElement>) => {
-    if (isViewMode) return; // Prevent changes in view mode
+    if (isViewMode) return;
     
     if (e.target.files && e.target.files.length > 0) {
       const newFiles = Array.from(e.target.files);
@@ -154,7 +172,7 @@ const CreateEditJob = () => {
   };
 
   const handleRemoveFile = (index: number) => {
-    if (isViewMode) return; // Prevent changes in view mode
+    if (isViewMode) return;
     
     setFormData(prevState => ({
       ...prevState,
@@ -163,7 +181,7 @@ const CreateEditJob = () => {
   };
 
   const handleSaveLocation = () => {
-    if (isViewMode) return; // Prevent changes in view mode
+    if (isViewMode) return;
     
     setSavedLocation(mapCenter);
     setIsEditingLocation(false);
@@ -171,34 +189,31 @@ const CreateEditJob = () => {
   };
 
   const handleChangeLocation = () => {
-    if (isViewMode) return; // Prevent changes in view mode
+    if (isViewMode) return;
     
     setIsEditingLocation(true);
   };
 
-  // Update the submit handler in CreateEditJob.tsx
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     
-    if (isViewMode) return; // Prevent submission in view mode
+    if (isViewMode) return;
     
-    // Show loading toast
     const toastId = toast.loading('Creating job and starting analysis...');
     
     try {
-      // First create the job
       const jobResponse = await api.post('/jobs/create/', {
         name: formData.jobNumber,
         job_number: formData.jobNumber,
         latitude: formData.latitude,
         longitude: formData.longitude,
         additional_notes: formData.additionalNotes,
-        survey_hours: formData.surveyHours
+        survey_hours: formData.surveyHours,
+        survey_types: formData.surveyTypes
       });
 
       const jobId = jobResponse.data.id;
 
-      // Upload videos if any
       if (formData.videoFiles.length > 0) {
         toast.loading('Uploading video files...', { id: toastId });
         const formDataVideos = new FormData();
@@ -213,23 +228,21 @@ const CreateEditJob = () => {
         });
       }
 
-      // Update toast to success
       toast.success('Job created and analysis started! Redirecting to dashboard...', { 
         id: toastId,
-        duration: 3000 // Show for 3 seconds before redirect
+        duration: 3000
       });
       
-      // Reset form
       setFormData({
         jobNumber: '',
         latitude: '',
         longitude: '',
         additionalNotes: '',
         surveyHours: '',
-        videoFiles: []
+        videoFiles: [],
+        surveyTypes: []
       });
       
-      // Wait a moment before redirecting so user can see the success message
       setTimeout(() => {
         navigate('/dashboard', {
           state: { scrollToJob: jobId }
@@ -237,7 +250,6 @@ const CreateEditJob = () => {
       }, 1000);
       
     } catch (error: any) {
-      // Update toast to error
       if (error.response?.data?.detail) {
         toast.error(`Failed to create job: ${error.response.data.detail}`, { id: toastId });
       } else {
@@ -258,7 +270,6 @@ const CreateEditJob = () => {
   return (
     <div className="min-h-screen bg-gray-50 p-6">
       <div className="max-w-6xl mx-auto">
-        {/* Back button and title */}
         <div className="flex items-center mb-8">
           {isViewMode && (
             <Link to="/dashboard" className="mr-4 p-2 rounded-full hover:bg-gray-200 transition-colors">
@@ -272,7 +283,6 @@ const CreateEditJob = () => {
         
         <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-lg p-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-            {/* Left Column */}
             <div className="space-y-6">
               <div className="space-y-4">
                 <div className="relative">
@@ -336,7 +346,32 @@ const CreateEditJob = () => {
                   />
                 </div>
 
-                {/* New Survey Hours Field */}
+                <div className="relative">
+                  <label className="text-sm font-medium text-gray-700 mb-1 block">
+                    Survey Type (Select all that apply)
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    {['TMC', 'PED/CYCLING', 'NEAR MISS', 'QUEUE', 'SPEED'].map((type) => (
+                      <div key={type} className="flex items-center">
+                        <input
+                          type="checkbox"
+                          id={`survey-${type}`}
+                          value={type}
+                          checked={formData.surveyTypes.includes(type)}
+                          onChange={handleSurveyTypeChange}
+                          disabled={isViewMode}
+                          className={`h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded ${
+                            isViewMode ? 'bg-gray-100' : ''
+                          }`}
+                        />
+                        <label htmlFor={`survey-${type}`} className="ml-2 text-sm text-gray-700">
+                          {type}
+                        </label>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
                 <div className="relative">
                   <label className="text-sm font-medium text-gray-700 mb-1 block">
                     Survey Hours
@@ -352,7 +387,6 @@ const CreateEditJob = () => {
                   />
                 </div>
 
-                {/* Files section */}
                 {isViewMode && jobDetails && jobDetails.videos && jobDetails.videos.length > 0 ? (
                   <div className="relative">
                     <label className="text-sm font-medium text-gray-700 mb-1 block">
@@ -374,7 +408,6 @@ const CreateEditJob = () => {
                   </div>
                 ) : !isViewMode && (
                   <>
-                    {/* Files that have been added section */}
                     <div className="relative">
                       <label className="text-sm font-medium text-gray-700 mb-1 block">
                         Files that have been added
@@ -435,8 +468,7 @@ const CreateEditJob = () => {
               </div>
             </div>
 
-             {/* Right Column - Map */}
-             <div className="flex-1 flex flex-col h-full">
+            <div className="flex-1 flex flex-col h-full">
               <div className="flex-1 rounded-lg overflow-hidden shadow-md">
                 <LoadScript
                   googleMapsApiKey="AIzaSyAev9Ol8x89pU3U89tTeODOv5Uhhu9uBAA"
@@ -467,7 +499,6 @@ const CreateEditJob = () => {
                 </LoadScript>
               </div>
 
-              {/* Map action buttons - only show in create mode */}
               {!isViewMode && (
                 <div className="flex space-x-4 mt-4">
                   <button
@@ -490,7 +521,6 @@ const CreateEditJob = () => {
                 </div>
               )}
 
-              {/* Location status message */}
               <div className="mt-2 text-sm text-gray-600 text-center">
                 {isViewMode && mapCenter 
                   ? `Location: ${mapCenter.lat.toFixed(6)}, ${mapCenter.lng.toFixed(6)}`
@@ -501,7 +531,6 @@ const CreateEditJob = () => {
                       : 'No location saved yet.'}
               </div>
 
-              {/* Submit button - only show in create mode */}
               {!isViewMode && (
                 <button
                   type="submit"
@@ -512,7 +541,6 @@ const CreateEditJob = () => {
                 </button>
               )}
               
-              {/* Job status in view mode */}
               {isViewMode && jobDetails && (
                 <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
                   <h3 className="text-sm font-medium text-gray-700 mb-2">Job Status</h3>

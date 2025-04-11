@@ -169,12 +169,12 @@ export default function Auth() {
             <div className="hero-content">
               <h3>Advanced Traffic Analysis</h3>
               <p>Real-time data visualization and comprehensive reporting tools</p>
-              <button className="demo-button">
+              {/* <button className="demo-button">
                 Watch Demo
                 <svg className="play-icon-sm" viewBox="0 0 24 24">
                   <path fill="currentColor" d="M8,5.14V19.14L19,12.14L8,5.14Z" />
                 </svg>
-              </button>
+              </button> */}
             </div>
           </div>
         </div>
