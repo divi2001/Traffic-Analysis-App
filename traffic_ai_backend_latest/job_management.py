@@ -6,6 +6,7 @@ from datetime import datetime
 import os
 import uuid
 from fastapi import Request
+import json
 
 from sqlalchemy import select, insert, update, and_
 from auth import get_current_user, oauth2_scheme  # Adjust path accordingly
@@ -100,7 +101,6 @@ async def get_job_details(
     """Get detailed information for a specific job"""
     user = await get_current_user(token)
     
-    # Fetch the job
     job = await database.fetch_one(
         select(jobs).where(
             and_(
@@ -113,11 +113,12 @@ async def get_job_details(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Fetch associated videos
     video_query = select(videos).join(job_videos).where(job_videos.c.job_id == job_id)
     assigned_videos = await database.fetch_all(video_query)
     
-    # Format the response
+    # Parse survey_types from JSON string
+    survey_types = json.loads(job["survey_types"]) if job["survey_types"] else []
+    
     result = {
         "id": job["id"],
         "job_number": job["job_number"],
@@ -127,6 +128,7 @@ async def get_job_details(
         "longitude": job["longitude"],
         "additional_notes": job["additional_notes"],
         "survey_hours": job["survey_hours"],
+        "survey_types": survey_types,  # Add this line
         "created_at": job["created_at"],
         "completed_at": job["completed_at"],
         "videos": [{"id": v["id"], "filename": v["filename"]} for v in assigned_videos]
@@ -134,7 +136,7 @@ async def get_job_details(
     
     return result
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import Optional
 
 class JobCreateRequest(BaseModel):
@@ -144,6 +146,7 @@ class JobCreateRequest(BaseModel):
     longitude: Optional[str] = None
     additional_notes: Optional[str] = None
     survey_hours: Optional[str] = None
+    survey_types: Optional[List[str]] = None  # Add this line
 
 class JobResponse(BaseModel):
     id: int
@@ -154,17 +157,26 @@ class JobResponse(BaseModel):
     longitude: Optional[str] = None
     additional_notes: Optional[str] = None
     survey_hours: Optional[str] = None
+    survey_types: Optional[List[str]] = None
     created_at: datetime
     completed_at: Optional[datetime] = None
     videos: List[dict]
 
+    @field_validator('survey_types', mode='before')
+    def parse_survey_types(cls, v):
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return []
+        return v or []
 
 # Update the create_job endpoint in job_management.py
 @router.post("/create/", response_model=JobResponse)
 async def create_job(
     data: JobCreateRequest,
     token: str = Depends(oauth2_scheme),
-    request: Request = None  # Optional: to inspect incoming headers or IP if needed
+    request: Request = None
 ):
     logger.info("Received job creation request: %s", data.dict())
 
@@ -192,21 +204,28 @@ async def create_job(
     initial_status = JobStatus.ANALYZING.value
 
     try:
+        # Convert survey_types list to JSON string
+        survey_types_str = json.dumps(data.survey_types) if data.survey_types else None
+
         job_query = insert(jobs).values(
             user_id=user["id"],
             job_number=data.job_number,
             name=data.name,
-            status=initial_status,  # Set to ANALYZING immediately
+            status=initial_status,
             latitude=data.latitude,
             longitude=data.longitude,
             additional_notes=data.additional_notes,
             survey_hours=data.survey_hours,
+            survey_types=survey_types_str,
             created_at=datetime.utcnow()
         ).returning(jobs)
         
         job = await database.fetch_one(job_query)
+        
+        # Ensure proper response format
         return {
             **job,
+            "survey_types": data.survey_types or [],
             "videos": []
         }
 
@@ -281,57 +300,51 @@ async def upload_job_videos(
     
     return {"message": "Videos uploaded successfully", "files": uploaded_files}
 
-@router.get("/{job_id}/reports/")
-async def get_job_reports(
+@router.get("/{job_id}/", response_model=JobResponse)
+async def get_job_details(
     job_id: int,
     token: str = Depends(oauth2_scheme)
 ):
-    logger.info(f"Attempting to fetch reports for job_id: {job_id}")
+    """Get detailed information for a specific job"""
+    user = await get_current_user(token)
     
-    try:
-        # Verify job exists
-        logger.info(f"Querying database for job_id: {job_id}")
-        job = await database.fetch_one(
-            select(jobs).where(jobs.c.id == job_id)
-        )
-        
-        if not job:
-            logger.error(f"Job not found for job_id: {job_id}")
-            raise HTTPException(status_code=404, detail="Job not found")
-        
-        logger.info(f"Found job: {job}")
-        
-        logger.info(f"Job status type: {type(job['status'])}, value: {repr(job['status'])}")
-
-        # Verify job is complete
-        # Verify job is complete
-        if job["status"] != JobStatus.COMPLETE:
-            error_msg = f"Job status is {job['status']}, not COMPLETE"
-            logger.error(error_msg)
-            raise HTTPException(
-                status_code=400,
-                detail="Reports are only available for completed jobs"
+    job = await database.fetch_one(
+        select(jobs).where(
+            and_(
+                jobs.c.id == job_id,
+                jobs.c.user_id == user["id"]
             )
-        
-        # Get all reports for this job
-        logger.info(f"Fetching reports for job_id: {job_id}")
-        reports_list = await database.fetch_all(
-            select(reports).where(reports.c.job_id == job_id)
         )
-        
-        logger.info(f"Found {len(reports_list)} reports for job_id: {job_id}")
-        return reports_list
-        
-    except HTTPException as he:
-        # Re-raise HTTP exceptions (404, 400, etc.)
-        logger.error(f"HTTPException in get_job_reports: {he.detail}")
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error in get_job_reports: {str(e)}")
-        raise HTTPException(
-            status_code=500,
-            detail="Internal server error while fetching reports"
-        )
+    )
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    video_query = select(videos).join(job_videos).where(job_videos.c.job_id == job_id)
+    assigned_videos = await database.fetch_all(video_query)
+    
+    # Ensure survey_types is properly formatted
+    survey_types = []
+    if job["survey_types"]:
+        try:
+            survey_types = json.loads(job["survey_types"])
+        except json.JSONDecodeError:
+            survey_types = []
+    
+    return {
+        "id": job["id"],
+        "job_number": job["job_number"],
+        "name": job["name"],
+        "status": job["status"],
+        "latitude": job["latitude"],
+        "longitude": job["longitude"],
+        "additional_notes": job["additional_notes"],
+        "survey_hours": job["survey_hours"],
+        "survey_types": survey_types,
+        "created_at": job["created_at"],
+        "completed_at": job["completed_at"],
+        "videos": [{"id": v["id"], "filename": v["filename"]} for v in assigned_videos]
+    }
 
 @router.get("/{job_id}/reports/{report_id}/download")
 async def download_report(

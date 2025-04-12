@@ -37,15 +37,16 @@ jobs = Table(
     metadata,
     Column("id", Integer, primary_key=True, index=True),
     Column("user_id", Integer, ForeignKey("users.id")),
-    Column("job_number", String, unique=True, index=True),  # Added job_number field
+    Column("job_number", String, unique=True, index=True),
     Column("name", String, nullable=False),
     Column("status", Enum(JobStatus), default=JobStatus.PENDING.value),
-    Column("latitude", String),  # Added for location data
-    Column("longitude", String),  # Added for location data
-    Column("additional_notes", String),  # Added for notes
-    Column("survey_hours", String),  # Added for survey hours
+    Column("latitude", String),
+    Column("longitude", String),
+    Column("additional_notes", String),
+    Column("survey_hours", String),
+    Column("survey_types", String),  # Store as JSON string or comma-separated values
     Column("created_at", DateTime, default=datetime.datetime.utcnow),
-    Column("completed_at", DateTime),  # Added completion date
+    Column("completed_at", DateTime),
 )
 
 job_videos = Table(
