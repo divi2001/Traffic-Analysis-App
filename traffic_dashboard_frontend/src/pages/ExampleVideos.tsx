@@ -11,7 +11,14 @@ interface Video {
   description: string;
   category?: string;
   views_count?: number;
+  type?: 'video' | 'image';
 }
+
+const inferType = (path: string): 'video' | 'image' => {
+  const extension = path.split('.').pop()?.toLowerCase();
+  const videoExtensions = ['mp4', 'mov', 'avi', 'webm'];
+  return extension && videoExtensions.includes(extension) ? 'video' : 'image';
+};
 
 const ExampleVideos = () => {
   const [selectedVideo, setSelectedVideo] = useState<Video | null>(null);
@@ -19,12 +26,17 @@ const ExampleVideos = () => {
   const [loading, setLoading] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState(0.5); // Default to 0.5x speed
   const videoRef = useRef<HTMLVideoElement>(null);
+  
 
   useEffect(() => {
     async function fetchExampleVideos() {
       try {
         const response = await api.get('/example-videos/');
-        setVideos(response.data);
+        const dataWithTypes = response.data.map((video: Video) => ({
+          ...video,
+          type: inferType(video.video_path),
+        }));
+        setVideos(dataWithTypes);
       } catch (error) {
         toast.error('Failed to load example videos');
         console.error('Error fetching videos:', error);
@@ -75,7 +87,7 @@ const ExampleVideos = () => {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <h2 className="text-2xl font-bold mb-6 text-gray-800">Example Videos</h2>
+      <h2 className="text-2xl font-bold mb-6 text-gray-800">Example Outputs</h2>
       
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {videos.map((video) => (
@@ -125,41 +137,52 @@ const ExampleVideos = () => {
               </div>
             </div>
             <div className="aspect-w-16 aspect-h-9">
-              <video 
-                ref={videoRef}
-                controls 
-                className="w-full h-full"
-                autoPlay
-                onLoadedMetadata={() => {
-                  if (videoRef.current) {
-                    videoRef.current.playbackRate = playbackSpeed;
-                  }
-                }}
-              >
-                <source src={selectedVideo.video_path} type="video/mp4" />
-                Your browser does not support the video tag.
-              </video>
+              {selectedVideo.type === 'video' ? (
+                <video 
+                  ref={videoRef}
+                  controls 
+                  className="w-full h-full"
+                  autoPlay
+                  onLoadedMetadata={() => {
+                    if (videoRef.current) {
+                      videoRef.current.playbackRate = playbackSpeed;
+                    }
+                  }}
+                >
+                  <source src={selectedVideo.video_path} type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+              ) : (
+                <img 
+                  src={selectedVideo.video_path}
+                  alt={selectedVideo.title}
+                  className="max-h-full max-w-full object-contain"
+                />
+              )}
             </div>
-            <div className="p-4 border-t">
-              <div className="flex items-center space-x-2">
-                <span className="text-sm text-gray-700">Playback Speed:</span>
-                <div className="flex space-x-2">
-                  {[0.25, 0.5, 0.75, 1.0].map(speed => (
-                    <button
-                      key={speed}
-                      onClick={() => handleSpeedChange(speed)}
-                      className={`px-2 py-1 text-xs rounded ${
-                        playbackSpeed === speed 
-                          ? 'bg-blue-500 text-white' 
-                          : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
-                      }`}
-                    >
-                      {speed}x
-                    </button>
-                  ))}
+
+            {selectedVideo.type === 'video' && (
+              <div className="p-4 border-t">
+                <div className="flex items-center space-x-2">
+                  <span className="text-sm text-gray-700">Playback Speed:</span>
+                  <div className="flex space-x-2">
+                    {[0.25, 0.5, 0.75, 1.0].map(speed => (
+                      <button
+                        key={speed}
+                        onClick={() => handleSpeedChange(speed)}
+                        className={`px-2 py-1 text-xs rounded ${
+                          playbackSpeed === speed 
+                            ? 'bg-blue-500 text-white' 
+                            : 'bg-gray-200 text-gray-800 hover:bg-gray-300'
+                        }`}
+                      >
+                        {speed}x
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       )}
