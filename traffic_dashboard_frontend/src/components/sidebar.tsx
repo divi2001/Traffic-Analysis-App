@@ -23,7 +23,7 @@ export default function Sidebar() {
     // { path: "/jobs", label: "My Jobs", icon: <FiFolder /> },
     // { path: "/dashboard", label: "Job Dashboard", icon: <FiPieChart /> },
     { path: "/historical-surveys", label: "Historical Surveys", icon: <FiArchive /> },
-    { path: "/example-videos", label: "Example Videos", icon: <FiVideo /> }
+    { path: "/example-videos", label: "Example Outputs", icon: <FiVideo /> }
   ];
 
   return (
