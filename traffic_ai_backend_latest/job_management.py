@@ -301,11 +301,7 @@ async def upload_job_videos(
     return {"message": "Videos uploaded successfully", "files": uploaded_files}
 
 @router.get("/{job_id}/", response_model=JobResponse)
-async def get_job_details(
-    job_id: int,
-    token: str = Depends(oauth2_scheme)
-):
-    """Get detailed information for a specific job"""
+async def get_job_details(job_id: int, token: str = Depends(oauth2_scheme)):
     user = await get_current_user(token)
     
     job = await database.fetch_one(
@@ -320,16 +316,16 @@ async def get_job_details(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
+    # More robust survey_types handling
+    try:
+        survey_types = json.loads(job["survey_types"]) if job["survey_types"] else []
+    except (json.JSONDecodeError, TypeError):
+        survey_types = []
+        # Optionally log the error
+        logger.warning(f"Invalid survey_types format for job {job_id}: {job['survey_types']}")
+    
     video_query = select(videos).join(job_videos).where(job_videos.c.job_id == job_id)
     assigned_videos = await database.fetch_all(video_query)
-    
-    # Ensure survey_types is properly formatted
-    survey_types = []
-    if job["survey_types"]:
-        try:
-            survey_types = json.loads(job["survey_types"])
-        except json.JSONDecodeError:
-            survey_types = []
     
     return {
         "id": job["id"],
@@ -346,12 +342,12 @@ async def get_job_details(
         "videos": [{"id": v["id"], "filename": v["filename"]} for v in assigned_videos]
     }
 
-@router.get("/{job_id}/reports/{report_id}/download")
-async def download_report(
+@router.get("/{job_id}/reports/")
+async def get_job_reports(
     job_id: int,
-    report_id: int,
     token: str = Depends(oauth2_scheme)
 ):
+    """Get all reports for a specific job"""
     user = await get_current_user(token)
     
     # Verify job exists and belongs to user
@@ -366,7 +362,45 @@ async def download_report(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
     
-    # Get the report
+    # Get all reports for this job
+    query = select(reports).where(reports.c.job_id == job_id)
+    job_reports = await database.fetch_all(query)
+    
+    if not job_reports:
+        raise HTTPException(status_code=404, detail="No reports found for this job")
+    
+    return [
+        {
+            "id": report["id"],
+            "file_path": report["file_path"],
+            "report_type": report["report_type"],
+            "generated_at": report["generated_at"]
+        }
+        for report in job_reports
+    ]
+
+@router.get("/{job_id}/reports/{report_id}/download")
+async def download_report(
+    job_id: int,
+    report_id: int,
+    token: str = Depends(oauth2_scheme)
+):
+    """Download a specific report"""
+    user = await get_current_user(token)
+    
+    # Verify job exists and belongs to user
+    job = await database.fetch_one(
+        select(jobs).where(
+            and_(
+                jobs.c.id == job_id,
+                jobs.c.user_id == user["id"]
+            )
+        )
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    
+    # Get the specific report
     report = await database.fetch_one(
         select(reports).where(
             and_(
@@ -379,19 +413,29 @@ async def download_report(
         raise HTTPException(status_code=404, detail="Report not found")
     
     file_path = report["file_path"]
-    if not os.path.exists(file_path):
+    logger.info(f"Attempting to download report from path: {file_path}")
+    
+    # Check if file exists and is within the reports directory
+    abs_file_path = os.path.abspath(file_path)
+    abs_reports_dir = os.path.abspath(REPORTS_DIR)
+    
+    if not os.path.exists(abs_file_path):
+        logger.error(f"Report file not found at path: {abs_file_path}")
         raise HTTPException(status_code=404, detail="Report file not found")
     
-    # Determine filename
-    filename = f"report_{job['job_number']}_{report['id']}.xlsx"
+    if not abs_file_path.startswith(abs_reports_dir):
+        logger.error(f"Invalid file path: {abs_file_path} is not within {abs_reports_dir}")
+        raise HTTPException(status_code=400, detail="Invalid file path")
     
-    # Return file for download
-    from fastapi.responses import FileResponse
-    return FileResponse(
-        file_path,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        filename=filename
-    )
+    try:
+        return FileResponse(
+            path=abs_file_path,
+            filename=os.path.basename(file_path),
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    except Exception as e:
+        logger.error(f"Error serving file: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error serving file")
 
 @router.post("/{job_id}/generate-report/")
 async def generate_report(
